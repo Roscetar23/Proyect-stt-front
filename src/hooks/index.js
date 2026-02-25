@@ -1,1 +1,3 @@
-// Barrel exports - to be populated
+// Barrel exports
+export { useStreak } from './useStreak';
+export { usePillarRotation } from './usePillarRotation';

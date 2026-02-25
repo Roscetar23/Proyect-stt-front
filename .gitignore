@@ -40,8 +40,6 @@ yarn-error.*
 /ios
 /android
 
-# Kiro
-.kiro/
 
 # Extra Documents
 

@@ -2,16 +2,16 @@ export const mockUsers = [
   {
     id: 'user-001',
     name: 'Ana García',
-    level: 5,
-    experience: 2500,
-    currentStreak: 7,
-    longestStreak: 15,
+    level: 1,
+    experience: 0,
+    currentStreak: 0,
+    longestStreak: 0,
     selectedRoute: 'intermediate',
-    completedAchievements: ['first_week', 'level_5', 'nutrition_master'],
+    completedAchievements: [],
     stats: {
-      nutrition: 75,
-      sleep: 60,
-      movement: 80
+      nutrition: 0,
+      sleep: 0,
+      movement: 0
     }
   },
   {

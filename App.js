@@ -45,6 +45,24 @@ try {
   importError = importError || `API import error: ${error.message}`;
 }
 
+// Step 4: Test screen imports
+let StreakHomeScreen, StreakHistoryScreen, PillarSelectionScreen;
+try {
+  const homeModule = require('./src/screens/StreakHomeScreen');
+  StreakHomeScreen = homeModule.StreakHomeScreen;
+  
+  const historyModule = require('./src/screens/StreakHistoryScreen');
+  StreakHistoryScreen = historyModule.StreakHistoryScreen;
+  
+  const selectionModule = require('./src/screens/PillarSelectionScreen');
+  PillarSelectionScreen = selectionModule.PillarSelectionScreen;
+  
+  console.log('✅ Screen imports successful');
+} catch (error) {
+  console.error('❌ Screen import failed:', error);
+  importError = importError || `Screen import error: ${error.message}`;
+}
+
 // Step 4: Test utility imports
 let calculateProgress, calculateExperienceForNextLevel;
 try {
@@ -113,17 +131,18 @@ function FallbackUI() {
 
 // Main App Component
 function App() {
-  console.log('� App component rendering...');
-  
+  console.log('🚀 App component rendering...');
+
   // If imports failed, show fallback
   if (importError) {
     return <FallbackUI />;
   }
 
+  const [activeScreen, setActiveScreen] = useState('home');
+  const [initialized, setInitialized] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
   const [error, setError] = useState(null);
-  
+
   // Safely get store state
   let storeState = {};
   try {
@@ -136,288 +155,161 @@ function App() {
     setError(`Store error: ${err.message}`);
   }
 
-  const {
-    user,
-    dailyPillar,
-    achievements = [],
-    initializeUser,
-    addExperience,
-    updateStreak,
-    rotatePillar,
-    unlockAchievement,
-    resetState
-  } = storeState;
+  const { initializeUser } = storeState;
 
-  // Show temporary message
-  const showMessage = (msg) => {
-    setMessage(msg);
-    setTimeout(() => setMessage(''), 2000);
-  };
+  // Initialize with mock data on mount
+  React.useEffect(() => {
+    if (!initialized && initializeUser && mockAPI) {
+      const initialize = async () => {
+        setLoading(true);
+        try {
+          const userData = await mockAPI.getUserData('user-001');
+          const achievementsData = await mockAPI.getAchievements('user-001');
 
-  // Safe action wrapper
-  const safeAction = (action, successMsg) => async () => {
-    try {
-      setError(null);
-      await action();
-      showMessage(successMsg);
-    } catch (err) {
-      console.error('Action error:', err);
-      setError(err.message);
-      showMessage(`❌ Error: ${err.message}`);
-    }
-  };
+          initializeUser(userData);
 
-  // Initialize with mock data
-  const handleInitialize = safeAction(async () => {
-    setLoading(true);
-    try {
-      const userData = await mockAPI.getUserData('user-001');
-      const achievementsData = await mockAPI.getAchievements('user-001');
-      
-      initializeUser(userData);
-      
-      const achievementsWithStatus = achievementsData.map(ach => ({
-        ...ach,
-        unlockedAt: userData.completedAchievements.includes(ach.id) 
-          ? new Date().toISOString() 
-          : null
-      }));
-      
-      useGameStore.setState({ 
-        achievements: achievementsWithStatus,
-        streak: {
-          currentCount: userData.currentStreak,
-          lastCompletedDate: new Date().toISOString()
-        },
-        dailyPillar: {
-          date: new Date().toISOString(),
-          pillar: 'nutrition',
-          isManuallySet: false,
-          target: { type: 'default', value: 1, unit: 'completion' },
-          progress: 0,
-          completed: false
+          const achievementsWithStatus = achievementsData.map(ach => ({
+            ...ach,
+            unlockedAt: userData.completedAchievements.includes(ach.id)
+              ? new Date().toISOString()
+              : null
+          }));
+
+          // Start with 0 streak for testing
+          useGameStore.setState({
+            achievements: achievementsWithStatus,
+            streak: {
+              currentCount: 0,
+              lastCompletedDate: null,
+              pillarHistory: []  // Empty history
+            },
+            dailyPillar: {
+              date: new Date().toISOString(),
+              pillar: 'nutrition',
+              isManuallySet: false,
+              target: { type: 'default', value: 1, unit: 'completion' },
+              progress: 0,
+              completed: false
+            }
+          });
+
+          setInitialized(true);
+          console.log('✅ User initialized on mount');
+        } catch (err) {
+          console.error('❌ Initialization failed:', err);
+          setError(`Initialization error: ${err.message}`);
+        } finally {
+          setLoading(false);
         }
-      });
-    } finally {
-      setLoading(false);
+      };
+
+      initialize();
     }
-  }, '✅ User initialized!');
+  }, [initialized, initializeUser]);
 
-  // Calculate progress safely
-  let progress = 0;
-  let nextLevelExp = 0;
-  let currentLevelExp = 0;
-  let expInLevel = 0;
-  let expNeeded = 0;
-
-  try {
-    if (user && calculateProgress && calculateExperienceForNextLevel) {
-      progress = calculateProgress(user.experience, user.level);
-      nextLevelExp = calculateExperienceForNextLevel(user.level);
-      currentLevelExp = calculateExperienceForNextLevel(user.level - 1);
-      expInLevel = user.experience - currentLevelExp;
-      expNeeded = nextLevelExp - currentLevelExp;
-    }
-  } catch (err) {
-    console.error('Progress calculation error:', err);
-  }
-
-  // Helper functions
-  const getPillarEmoji = (pillar) => {
-    const emojis = { nutrition: '🥗', sleep: '😴', movement: '🏃' };
-    return emojis[pillar] || '❓';
+  // Create mock navigation object
+  const navigation = {
+    navigate: (screen) => {
+      const screenMap = {
+        'StreakHistory': 'history',
+        'PillarSelection': 'selection'
+      };
+      setActiveScreen(screenMap[screen] || screen);
+    },
+    goBack: () => setActiveScreen('home')
   };
 
-  const getPillarName = (pillar) => {
-    const names = { nutrition: 'Nutrición', sleep: 'Sueño', movement: 'Movimiento' };
-    return names[pillar] || pillar;
+  // Render active screen
+  const renderScreen = () => {
+    if (loading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FF6B35" />
+          <Text style={styles.loadingText}>Inicializando...</Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorTitle}>⚠️ Error</Text>
+          <Text style={styles.errorMessage}>{error}</Text>
+        </View>
+      );
+    }
+
+    if (!initialized) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FF6B35" />
+          <Text style={styles.loadingText}>Cargando datos...</Text>
+        </View>
+      );
+    }
+
+    // Render the appropriate screen
+    switch (activeScreen) {
+      case 'home':
+        return StreakHomeScreen ? <StreakHomeScreen navigation={navigation} /> : null;
+      case 'history':
+        return StreakHistoryScreen ? <StreakHistoryScreen navigation={navigation} /> : null;
+      case 'selection':
+        return PillarSelectionScreen ? <PillarSelectionScreen navigation={navigation} /> : null;
+      default:
+        return <Text>Screen not found</Text>;
+    }
   };
 
-  console.log('✅ Rendering main UI');
+  console.log('✅ Rendering streak system UI');
 
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
-      
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>🎮 Gamification Demo</Text>
-          <Text style={styles.subtitle}>Sistema de Gamificación</Text>
-          <Text style={styles.status}>✅ All imports loaded successfully!</Text>
-        </View>
 
-        {/* Error Display */}
-        {error && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>⚠️ {error}</Text>
-          </View>
-        )}
+      {/* Screen Content */}
+      <View style={styles.screenContainer}>
+        {renderScreen()}
+      </View>
 
-        {/* Message Toast */}
-        {message ? (
-          <View style={styles.messageToast}>
-            <Text style={styles.messageText}>{message}</Text>
-          </View>
-        ) : null}
-
-        {/* Loading Indicator */}
-        {loading && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#6366f1" />
-            <Text style={styles.loadingText}>Loading data...</Text>
-          </View>
-        )}
-
-        {/* User Info Section */}
-        {user ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>� User Information</Text>
-            <View style={styles.card}>
-              <Text style={styles.userName}>{user.name}</Text>
-              <View style={styles.statsRow}>
-                <View style={styles.statItem}>
-                  <Text style={styles.statLabel}>⭐ Level</Text>
-                  <Text style={styles.statValue}>{user.level}</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statLabel}>💎 Experience</Text>
-                  <Text style={styles.statValue}>{user.experience}</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statLabel}>🔥 Streak</Text>
-                  <Text style={styles.statValue}>{user.currentStreak}</Text>
-                </View>
-              </View>
-              
-              {/* Progress Bar */}
-              <View style={styles.progressSection}>
-                <Text style={styles.progressLabel}>
-                  Progress to Level {user.level + 1}
-                </Text>
-                <View style={styles.progressBar}>
-                  <View style={[styles.progressFill, { width: `${progress}%` }]} />
-                </View>
-                <Text style={styles.progressText}>
-                  {expInLevel} / {expNeeded} XP ({Math.round(progress)}%)
-                </Text>
-              </View>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.section}>
-            <Text style={styles.emptyText}>No user data. Initialize to start!</Text>
-          </View>
-        )}
-
-        {/* Daily Pillar Section */}
-        {dailyPillar && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>📅 Daily Pillar</Text>
-            <View style={styles.card}>
-              <View style={styles.pillarHeader}>
-                <Text style={styles.pillarEmoji}>
-                  {getPillarEmoji(dailyPillar.pillar)}
-                </Text>
-                <Text style={styles.pillarName}>
-                  {getPillarName(dailyPillar.pillar)}
-                </Text>
-              </View>
-              <Text style={styles.pillarStatus}>
-                {dailyPillar.completed ? '✅ Completed' : '⏳ Pending'}
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Achievements Section */}
-        {achievements.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>🏆 Achievements</Text>
-            <View style={styles.achievementsList}>
-              {achievements.slice(0, 6).map((achievement) => (
-                <View 
-                  key={achievement.id} 
-                  style={[
-                    styles.achievementCard,
-                    achievement.unlockedAt && styles.achievementUnlocked
-                  ]}
-                >
-                  <Text style={styles.achievementIcon}>{achievement.icon}</Text>
-                  <Text style={styles.achievementTitle}>{achievement.title}</Text>
-                  <Text style={styles.achievementDesc}>{achievement.description}</Text>
-                  <Text style={styles.achievementStatus}>
-                    {achievement.unlockedAt ? '🔓 Unlocked' : '🔒 Locked'}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Action Buttons */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🎯 Actions</Text>
-          
-          <TouchableOpacity 
-            style={[styles.button, styles.buttonPrimary]} 
-            onPress={handleInitialize}
-            disabled={loading}
-          >
-            <Text style={styles.buttonText}>🚀 Initialize User</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.button, styles.buttonSuccess]} 
-            onPress={safeAction(() => addExperience(50), '⭐ +50 XP added!')}
-            disabled={!user}
-          >
-            <Text style={styles.buttonText}>⭐ Add +50 XP</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.button, styles.buttonWarning]} 
-            onPress={safeAction(() => updateStreak(true), '🔥 Streak updated!')}
-            disabled={!user}
-          >
-            <Text style={styles.buttonText}>🔥 Complete Daily Pillar</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.button, styles.buttonInfo]} 
-            onPress={safeAction(() => rotatePillar(), '🔄 Pillar rotated!')}
-            disabled={!user}
-          >
-            <Text style={styles.buttonText}>🔄 Rotate Pillar</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.button, styles.buttonSecondary]} 
-            onPress={safeAction(() => {
-              const lockedAchievement = achievements.find(a => !a.unlockedAt);
-              if (lockedAchievement) {
-                unlockAchievement(lockedAchievement.id);
-              }
-            }, '🏆 Achievement unlocked!')}
-            disabled={!user || achievements.length === 0}
-          >
-            <Text style={styles.buttonText}>🏆 Unlock Achievement</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.button, styles.buttonDanger]} 
-            onPress={safeAction(() => resetState(), '🔄 State reset!')}
-          >
-            <Text style={styles.buttonText}>🔄 Reset State</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            All infrastructure working! 🎉
+      {/* Tab Navigation */}
+      <View style={styles.tabBar}>
+        <TouchableOpacity
+          style={[styles.tab, activeScreen === 'home' && styles.activeTab]}
+          onPress={() => setActiveScreen('home')}
+        >
+          <Text style={[styles.tabIcon, activeScreen === 'home' && styles.activeTabIcon]}>
+            🏠
           </Text>
-        </View>
-      </ScrollView>
+          <Text style={[styles.tabLabel, activeScreen === 'home' && styles.activeTabLabel]}>
+            Inicio
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeScreen === 'history' && styles.activeTab]}
+          onPress={() => setActiveScreen('history')}
+        >
+          <Text style={[styles.tabIcon, activeScreen === 'history' && styles.activeTabIcon]}>
+            📅
+          </Text>
+          <Text style={[styles.tabLabel, activeScreen === 'history' && styles.activeTabLabel]}>
+            Historial
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeScreen === 'selection' && styles.activeTab]}
+          onPress={() => setActiveScreen('selection')}
+        >
+          <Text style={[styles.tabIcon, activeScreen === 'selection' && styles.activeTabIcon]}>
+            🎯
+          </Text>
+          <Text style={[styles.tabLabel, activeScreen === 'selection' && styles.activeTabLabel]}>
+            Pilares
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -471,232 +363,76 @@ const errorStyles = StyleSheet?.create ? StyleSheet.create({
 const styles = StyleSheet?.create ? StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#F5F5F5',
   },
-  scrollView: {
+  screenContainer: {
     flex: 1,
   },
-  scrollContent: {
-    padding: 20,
-    paddingTop: 60,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#1e293b',
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#64748b',
-  },
-  status: {
-    fontSize: 12,
-    color: '#10b981',
-    marginTop: 8,
-  },
-  errorBox: {
-    backgroundColor: '#fee',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#fcc',
-  },
-  errorText: {
-    color: '#c00',
-    fontSize: 14,
-  },
-  messageToast: {
-    backgroundColor: '#1e293b',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-  messageText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
   loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
   loadingText: {
-    marginTop: 8,
-    color: '#64748b',
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1e293b',
-    marginBottom: 12,
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  userName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1e293b',
-    marginBottom: 16,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 16,
-  },
-  statItem: {
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: 14,
-    color: '#64748b',
-    marginBottom: 4,
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#6366f1',
-  },
-  progressSection: {
-    marginTop: 8,
-  },
-  progressLabel: {
-    fontSize: 14,
-    color: '#64748b',
-    marginBottom: 8,
-  },
-  progressBar: {
-    height: 12,
-    backgroundColor: '#e2e8f0',
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#6366f1',
-    borderRadius: 6,
-  },
-  progressText: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  pillarHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  pillarEmoji: {
-    fontSize: 32,
-    marginRight: 12,
-  },
-  pillarName: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1e293b',
-  },
-  pillarStatus: {
-    fontSize: 14,
-    color: '#64748b',
-  },
-  achievementsList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  achievementCard: {
-    width: '48%',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#e2e8f0',
-  },
-  achievementUnlocked: {
-    backgroundColor: '#fff',
-    borderColor: '#6366f1',
-  },
-  achievementIcon: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
-  achievementTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#1e293b',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  achievementDesc: {
-    fontSize: 11,
-    color: '#64748b',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  achievementStatus: {
-    fontSize: 11,
-    color: '#64748b',
-  },
-  button: {
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  buttonPrimary: {
-    backgroundColor: '#6366f1',
-  },
-  buttonSuccess: {
-    backgroundColor: '#10b981',
-  },
-  buttonWarning: {
-    backgroundColor: '#f59e0b',
-  },
-  buttonInfo: {
-    backgroundColor: '#3b82f6',
-  },
-  buttonSecondary: {
-    backgroundColor: '#8b5cf6',
-  },
-  buttonDanger: {
-    backgroundColor: '#ef4444',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  emptyText: {
+    marginTop: 12,
     fontSize: 16,
     color: '#64748b',
-    textAlign: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     padding: 20,
   },
-  footer: {
-    alignItems: 'center',
-    paddingVertical: 20,
+  errorTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#ef4444',
+    marginBottom: 12,
   },
-  footerText: {
-    fontSize: 14,
+  errorMessage: {
+    fontSize: 16,
     color: '#64748b',
+    textAlign: 'center',
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    paddingBottom: 20,
+    paddingTop: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 8,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  activeTab: {
+    borderTopWidth: 2,
+    borderTopColor: '#FF6B35',
+  },
+  tabIcon: {
+    fontSize: 24,
+    marginBottom: 4,
+    opacity: 0.6,
+  },
+  activeTabIcon: {
+    opacity: 1,
+  },
+  tabLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  activeTabLabel: {
+    color: '#FF6B35',
+    fontWeight: 'bold',
   },
 }) : {};
