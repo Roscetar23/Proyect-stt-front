@@ -46,7 +46,7 @@ try {
 }
 
 // Step 4: Test screen imports
-let StreakHomeScreen, StreakHistoryScreen, PillarSelectionScreen;
+let StreakHomeScreen, StreakHistoryScreen, PillarSelectionScreen, LevelMapScreen;
 try {
   const homeModule = require('./src/screens/StreakHomeScreen');
   StreakHomeScreen = homeModule.StreakHomeScreen;
@@ -56,6 +56,9 @@ try {
   
   const selectionModule = require('./src/screens/PillarSelectionScreen');
   PillarSelectionScreen = selectionModule.PillarSelectionScreen;
+  
+  const levelModule = require('./src/screens/LevelMapScreen');
+  LevelMapScreen = levelModule.default;
   
   console.log('✅ Screen imports successful');
 } catch (error) {
@@ -190,6 +193,13 @@ function App() {
               target: { type: 'default', value: 1, unit: 'completion' },
               progress: 0,
               completed: false
+            },
+            user: {
+              ...userData,
+              experience: userData.experience || 500, // Default XP for testing
+              selectedRoute: userData.selectedRoute || 'beginner', // Default route
+              currentStreak: 0,
+              longestStreak: userData.longestStreak || 0
             }
           });
 
@@ -212,7 +222,8 @@ function App() {
     navigate: (screen) => {
       const screenMap = {
         'StreakHistory': 'history',
-        'PillarSelection': 'selection'
+        'PillarSelection': 'selection',
+        'LevelTest': 'levels'
       };
       setActiveScreen(screenMap[screen] || screen);
     },
@@ -256,6 +267,8 @@ function App() {
         return StreakHistoryScreen ? <StreakHistoryScreen navigation={navigation} /> : null;
       case 'selection':
         return PillarSelectionScreen ? <PillarSelectionScreen navigation={navigation} /> : null;
+      case 'levels':
+        return LevelMapScreen ? <LevelMapScreen navigation={navigation} /> : null;
       default:
         return <Text>Screen not found</Text>;
     }
@@ -307,6 +320,18 @@ function App() {
           </Text>
           <Text style={[styles.tabLabel, activeScreen === 'selection' && styles.activeTabLabel]}>
             Pilares
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeScreen === 'levels' && styles.activeTab]}
+          onPress={() => setActiveScreen('levels')}
+        >
+          <Text style={[styles.tabIcon, activeScreen === 'levels' && styles.activeTabIcon]}>
+            🗺️
+          </Text>
+          <Text style={[styles.tabLabel, activeScreen === 'levels' && styles.activeTabLabel]}>
+            Camino
           </Text>
         </TouchableOpacity>
       </View>

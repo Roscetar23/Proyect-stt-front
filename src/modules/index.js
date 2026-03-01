@@ -5,4 +5,7 @@
  */
 
 // StreakManager - Sistema de rachas
-export { default as streakManager } from './streakManager';
+export { default as streakManager } from './streakManager/index.js';
+
+// LevelSystem - Sistema de niveles
+export { default as levelSystem } from './levelSystem/index.js';
